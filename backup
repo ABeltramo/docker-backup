@@ -9,12 +9,12 @@ BACKUP_AWS_KEY=${BACKUP_AWS_KEY:-}
 BACKUP_AWS_SECRET=${BACKUP_AWS_SECRET:-}
 BACKUP_AWS_S3_PATH=${BACKUP_AWS_S3_PATH:-}
 
-# upload to amazon s3
-if [[ ${MYSQL_HOST} ]]; then
+# Backup MYSQL DB
+if ${MYSQL_HOST}; then
     # Make the mysqldump
 
     now=$(date +"%s_%Y-%m-%d")
-    BACKUP_NAME="/tmp/${now}_mysqldump.sql.gz"
+    BACKUP_NAME="${BACKUP_DEST_FOLDER}${now}_mysqldump.sql.gz"
     /usr/bin/mysqldump --opt -h ${MYSQL_HOST} -u ${MYSQL_USER} -p${MYSQL_PASSWORD} --all-databases | gzip > ${BACKUP_NAME}
 
     # upload to S3
@@ -25,13 +25,19 @@ if [[ ${MYSQL_HOST} ]]; then
         "${BACKUP_AWS_S3_PATH}"
 
     # remove the backup locally
-    rm ${BACKUP_NAME}
-    
-elif [[ ${BACKUP_FIND_OPTIONS} ]]; then
+    if ${BACKUP_DELETE_LOCAL_COPY}; then
+      rm ${BACKUP_NAME}
+    fi
+fi
+
+
+# Backup local folder
+if ${SYNC_FOLDER}; then
     s3cmd \
         --access_key="${BACKUP_AWS_KEY:?'BACKUP_AWS_KEY is required'}" \
         --secret_key="${BACKUP_AWS_SECRET:?'BACKUP_AWS_SECRET is required'}" \
-        sync -r "${BACKUP_FIND_OPTIONS}" \
+        --delete-removed \
+        sync -r "${SYNC_FOLDER}" \
         "${BACKUP_AWS_S3_PATH}"
 fi
 

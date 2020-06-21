@@ -1,3 +1,5 @@
+![Docker hub - abeltramo/backup](https://img.shields.io/badge/docker-abeltramo%2Fbackup-success)![Docker Cloud Build Status](https://img.shields.io/docker/cloud/build/abeltramo/backup)![Docker Image Size (latest by date)](https://img.shields.io/docker/image-size/abeltramo/backup)
+
 # Table of Contents
 
 - [Supported tags](#supported-tags)
@@ -9,7 +11,7 @@
 
 ## Supported tags
 
-- `latest`
+- `abeltramo/backup:latest`
 
 ## Introduction
 
@@ -17,21 +19,22 @@ Dockerfile to build an image which allows to create backup archives on daily
 basic. This image is based on [Alpine Linux](http://www.alpinelinux.org) and
 [s3cmd](http://s3tools.org/s3cmd) tool. You can use this image to create
 backup archives and store them on local folder or upload to S3.
+Include also `mysqldump` in order to create a mysql dump, gzip it and backup it up to S3.
 
 ## Installation
 
-Pull the image from the [docker registry](https://registry.hub.docker.com/u/outcoldman/backup/).
+Pull the image from the [docker registry](https://hub.docker.com/r/abeltramo/backup).
 This is the recommended method of installation as it is easier to update image.
 These builds are performed by the **Docker Trusted Build** service.
 
 ```bash
-docker pull outcoldman/backup:latest
+docker pull abeltramo/backup:latest
 ```
 
 Alternately you can build the image locally.
 
 ```bash
-git clone https://github.com/outcoldman/docker-backup.git
+git clone https://github.com/abeltramo/docker-backup.git
 cd docker-backup
 docker build --tag="$USER/backup" .
 ```
@@ -87,26 +90,17 @@ update bucket locations)
 
 ```bash
 docker run -d \
-    -e "BACKUP_FIND_OPTIONS=/etc/" \
-    -e "BACKUP_PREFIX=my_etc" \
+    -e "SYNC_FOLDER=/etc/" \
     -e "BACKUP_AWS_KEY=AWS_KEY" \
     -e "BACKUP_AWS_SECRET=AWS_SECRET" \
     -e "BACKUP_AWS_S3_PATH=s3://your-backup-us-west-2" \
-    outcoldman/backup:latest
+    abeltramo/backup:latest
 ```
 
 ## Configuration
 
-- `BACKUP_PREFIX` - prefix for the backup archives in format
-    `${BACKUP_PREFIX}.$(date -Iseconds | sed 's/:/-/g').tar.gz`, for example
-    `my_etc.2015-09-04T05-28-55+0000.tar.gz`. Default value is `backup`.
-- `BACKUP_DEST_FOLDER` - if you want to keep backups locally you can change
-    destination folder which is used to create backup archives. Default
-    value is `/var/tmp`
-- `BACKUP_DELETE_LOCAL_COPY` - if you want to keep backups in
-    `BACKUP_DEST_FOLDER` set it to `true`. Default value is `true`.
-- `BACKUP_FIND_OPTIONS` - this image is using `find` to select files you want
-    to backup. See [man find](https://www.freebsd.org/cgi/man.cgi?query=find(1)&sektion=).
+### Common
+
 - `BACKUP_AWS_KEY` - AWS Key.
 - `BACKUP_AWS_SECRET` - AWS Secret.
 - `BACKUP_AWS_S3_PATH` - path to S3 bucket, like `s3://your-backup-us-west-2`.
@@ -117,42 +111,48 @@ docker run -d \
 - `BACKUP_CRON_SCHEDULE` - specify when and how often you want to run backup
     script. Defaults to `0 2 * * *` (every day at 2am).
 
+### MYSQL
+
+- `BACKUP_DEST_FOLDER` - if you want to keep backups locally you can change
+    destination folder which is used to create backup archives. Default
+    value is `/var/tmp`
+- `BACKUP_DELETE_LOCAL_COPY` - if you want to keep backups in
+    `BACKUP_DEST_FOLDER` set it to `true`. Default value is `true`.
+- `MYSQL_HOST`
+- `MYSQL_USER`
+- `MYSQL_PASSWORD`
+
+### Local folder
+
+Setting `SYNC_FOLDER` will sync the local folder to the remote S3 bucket, it will also delete things that will no longer exists locally.
+
 ## Examples
 
-### Backing up Splunk `etc` folder
+### Backing up MariaDB tables using mysqldump
 
-My `docker-compose.yml` part for backing up `Splunk Light` settings, including
-system no default settings and search non default settings
+```yaml
 
-```
-vsplunk:
-  image: busybox
-  volumes:
-    - /opt/splunk/etc
-    - /opt/splunk/var
+database:
+    image: mariadb
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=testDB
 
-splunk:
-  image: outcoldman/splunk:latest
-  volumes_from:
-    - vsplunk
-  restart: always
-
-splunkbackup:
-  image: outcoldman/backup:latest
+backup:
+  image: abeltramo/backup:latest
   environment:
-    - BACKUP_PREFIX=splunk-etc
     - BACKUP_AWS_KEY=AWS_KEY
     - BACKUP_AWS_SECRET=AWS_SECRET
     - BACKUP_AWS_S3_PATH=s3://my-backup-bucket
-    - BACKUP_FIND_OPTIONS=/opt/splunk/etc \( -path "/opt/splunk/etc/apps/search/*" -a ! -path "/opt/splunk/etc/apps/search/default*" \) -o \( -path "/opt/splunk/etc/system/*" -a ! -path "/opt/splunk/etc/system/default*" \)
-  volumes_from:
-    - vsplunk
+    - MYSQL_HOST=database
+    - MYSQL_USER=root
+    - MYSQL_PASSWORD=password
   restart: always
 ```
 
-### Backing up Jenkins
+### Backing up Jenkins data folder
 
-```
+```yaml
 vdata:
   image: busybox
   volumes:
@@ -166,13 +166,12 @@ jenkins:
   restart: always
 
 backup:
-  image: outcoldman/backup:latest
+  image: abeltramo/backup:latest
   environment:
-    - BACKUP_PREFIX=jenkins
     - BACKUP_AWS_KEY=AWS_KEY
     - BACKUP_AWS_SECRET=AWS_SECRET
     - BACKUP_AWS_S3_PATH=s3://my-backup-bucket
-    - BACKUP_FIND_OPTIONS=/var/jenkins_home/ -path "/var/jenkins_home/.ssh/*" -o -path "/var/jenkins_home/plugins/*.jpi" -o -path "/var/jenkins_home/users/*" -o -path "/var/jenkins_home/secrets/*" -o -path "/var/jenkins_home/jobs/*" -o -regex "/var/jenkins_home/[^/]*.xml" -o -regex "/var/jenkins_home/secret.[^/]*"
+    - SYNC_FOLDER=/var/jenkins_home/ -path "/var/jenkins_home/.ssh/*" -o -path "/var/jenkins_home/plugins/*.jpi" -o -path "/var/jenkins_home/users/*" -o -path "/var/jenkins_home/secrets/*" -o -path "/var/jenkins_home/jobs/*" -o -regex "/var/jenkins_home/[^/]*.xml" -o -regex "/var/jenkins_home/secret.[^/]*"
   volumes_from:
     - vdata
   restart: always
